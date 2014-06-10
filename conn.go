@@ -2,6 +2,7 @@ package udp
 
 import (
 	"bytes"
+	"container/heap"
 	"encoding/binary"
 	"errors"
 	"math/rand"
@@ -22,6 +23,11 @@ type Conn struct {
 
 	incomingPacketsIn chan []byte
 	incomingPackets   chan []byte
+	recvIn            chan []byte
+	Recv              chan []byte
+
+	unackPackets []Packet
+	packetHeap   *Heap
 }
 
 func makeConn() *Conn {
@@ -30,11 +36,17 @@ func makeConn() *Conn {
 		Logger:            newLogger(),
 		incomingPacketsIn: make(chan []byte),
 		incomingPackets:   make(chan []byte),
+		recvIn:            make(chan []byte),
+		Recv:              make(chan []byte),
+		packetHeap:        new(Heap),
 	}
+	heap.Init(conn.packetHeap)
 	ic.Link(conn.incomingPacketsIn, conn.incomingPackets)
+	ic.Link(conn.recvIn, conn.Recv)
 	conn.OnClose(func() {
 		conn.Logger.Close()
 		close(conn.incomingPacketsIn)
+		close(conn.recvIn)
 	})
 	return conn
 }
@@ -79,4 +91,50 @@ func (c *Conn) handshake() error {
 	}
 	c.Log("handshake done")
 	return nil
+}
+
+func (c *Conn) start() {
+	for {
+		select {
+		case packetData, ok := <-c.incomingPackets:
+			if !ok { // conn closed
+				return
+			}
+			c.handlePacket(packetData)
+		}
+	}
+}
+
+func (c *Conn) handlePacket(packetData []byte) {
+	serial, ackSerial, flags, windowSize, data := c.readPacket(packetData)
+	if serial == c.ackSerial { // in order
+		c.recvIn <- data
+		c.Log("Recv serial %d length %d", serial, len(data))
+		c.ackSerial++
+	} else if serial < c.ackSerial { // duplicated packet
+		// ignore
+	} else if serial > c.ackSerial { // out of order
+		heap.Push(c.packetHeap, &Packet{ // push to heap
+			serial: serial,
+			data:   data,
+		})
+		for packet := c.packetHeap.Peek(); packet.serial == c.ackSerial; packet = c.packetHeap.Peek() {
+			heap.Pop(c.packetHeap)
+			c.recvIn <- packet.data
+			c.ackSerial++
+		}
+	}
+	//TODO process ackSerial, delete item from unackPackets
+	_ = ackSerial
+	//TODO process flags
+	_ = flags
+	//TODO windowSize
+	_ = windowSize
+}
+
+func (c *Conn) Send(data []byte) error {
+	packet := c.newPacket(data, ACK)
+	c.unackPackets = append(c.unackPackets, packet)
+	c.Log("Send serial %d", packet.serial)
+	return c.sendPacket(packet)
 }

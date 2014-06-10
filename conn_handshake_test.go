@@ -16,7 +16,7 @@ func TestHandshake(t *testing.T) {
 	defer server.Close()
 	go func() { // server logs
 		for log := range server.Logs {
-			t.Logf("SERVER: %s\n", log)
+			p("SERVER: %s\n", log)
 		}
 	}()
 
@@ -25,7 +25,7 @@ func TestHandshake(t *testing.T) {
 		for conn := range server.NewConns { // new connection
 			go func() {
 				for log := range conn.Logs {
-					t.Logf("SERVER CONN: %s\n", log)
+					p("SERVER CONN: %s\n", log)
 					if log == "handshake done" {
 						close(waitServerDone)
 					}
@@ -43,7 +43,7 @@ func TestHandshake(t *testing.T) {
 	waitClientDone := make(chan bool)
 	go func() {
 		for log := range client.Logs {
-			t.Logf("CLIENT CONN: %s\n", log)
+			p("CLIENT CONN: %s\n", log)
 			if log == "handshake done" {
 				close(waitClientDone)
 			}

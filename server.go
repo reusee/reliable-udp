@@ -99,6 +99,7 @@ func (s *Server) newConn(conns map[string]*Conn, remoteAddr *net.UDPAddr, packet
 		if err := conn.handshake(); err != nil {
 			return
 		}
+		conn.start()
 	}()
 	s.Log("newConn addr %s serial %d", remoteAddr.String(), serial)
 }

@@ -48,6 +48,7 @@ func NewClient(addrStr string) (*Conn, error) {
 	}
 	syncPacket := conn.newPacket([]byte{}, ACK)
 	conn.sendPacket(syncPacket)
+	go conn.start()
 
 	return conn, nil
 }

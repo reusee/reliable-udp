@@ -16,6 +16,7 @@ type Packet struct {
 	serial uint32
 	flag   byte
 	data   []byte
+	index  int // for heap
 }
 
 func (c *Conn) newPacket(data []byte, flags ...byte) Packet {
