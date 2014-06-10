@@ -20,7 +20,7 @@ func TestSend(t *testing.T) {
 		}
 	}()
 
-	n := 4096
+	n := 8000
 	done := make(chan bool)
 
 	go func() {

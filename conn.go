@@ -3,6 +3,7 @@ package udp
 import (
 	"bytes"
 	"container/heap"
+	"container/list"
 	"encoding/binary"
 	"errors"
 	"math/rand"
@@ -26,7 +27,7 @@ type Conn struct {
 	recvIn            chan []byte
 	Recv              chan []byte
 
-	unackPackets []Packet
+	unackPackets *list.List
 	packetHeap   *Heap
 }
 
@@ -38,6 +39,7 @@ func makeConn() *Conn {
 		incomingPackets:   make(chan []byte),
 		recvIn:            make(chan []byte),
 		Recv:              make(chan []byte),
+		unackPackets:      list.New(),
 		packetHeap:        new(Heap),
 	}
 	heap.Init(conn.packetHeap)
@@ -110,8 +112,8 @@ func (c *Conn) handlePacket(packetData []byte) {
 	if serial == c.ackSerial { // in order
 		if len(data) > 0 {
 			c.recvIn <- data
+			c.Log("Provide serial %d length %d", serial, len(data))
 		}
-		c.Log("Recv serial %d length %d", serial, len(data))
 		c.ackSerial++
 	} else if serial < c.ackSerial { // duplicated packet
 		// ignore
@@ -120,16 +122,22 @@ func (c *Conn) handlePacket(packetData []byte) {
 			serial: serial,
 			data:   data,
 		})
+		c.Log("Out of order packet %d heapLen %d", serial, c.packetHeap.Len())
 		for packet := c.packetHeap.Peek(); packet.serial == c.ackSerial; packet = c.packetHeap.Peek() {
 			heap.Pop(c.packetHeap)
 			if len(packet.data) > 0 {
 				c.recvIn <- packet.data
+				c.Log("Provide serial %d length %d", serial, len(data))
 			}
 			c.ackSerial++
 		}
 	}
-	//TODO process ackSerial, delete item from unackPackets
-	c.Log("Acked %d", ackSerial)
+	// process ackSerial
+	c.Log("unackPackets Len %d", c.unackPackets.Len())
+	for e := c.unackPackets.Front(); e != nil && e.Value.(Packet).serial < ackSerial; e = c.unackPackets.Front() {
+		c.Log("Acked %d", e.Value.(Packet).serial)
+		c.unackPackets.Remove(e)
+	}
 	_ = ackSerial
 	//TODO process flags
 	_ = flags
@@ -139,7 +147,7 @@ func (c *Conn) handlePacket(packetData []byte) {
 
 func (c *Conn) Send(data []byte) error {
 	packet := c.newPacket(data, ACK)
-	c.unackPackets = append(c.unackPackets, packet)
+	c.unackPackets.PushBack(packet)
 	c.Log("Send serial %d", packet.serial)
 	return c.sendPacket(packet)
 }
