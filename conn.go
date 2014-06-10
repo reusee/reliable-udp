@@ -3,6 +3,7 @@ package udp
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"math/rand"
 	"time"
 
@@ -56,25 +57,26 @@ func (c *Conn) readPacket(packetData []byte) (uint32, uint32, byte, uint16, []by
 	return serial, ackSerial, flag, windowSize, data
 }
 
-func (c *Conn) handshake() {
+func (c *Conn) handshake() error {
 	c.Log("handshake start")
 	// send sync packet
 	packet := c.newPacket([]byte{}, SYNC, ACK)
 	c.sendPacket(packet)
 	// wait ack
 	select {
-	case <-time.NewTimer(time.Second * 10).C: // timeout
+	case <-time.NewTimer(time.Second * 4).C: // timeout
 		c.Log("handshake timeout")
 		c.Close()
-		return
+		return errors.New("handshake timeout")
 	case packetData := <-c.incomingPackets: // get ack
 		serial, _, flags, _, _ := c.readPacket(packetData)
 		if flags&ACK == 0 {
 			c.Log("handshake error")
 			c.Close()
-			return
+			return errors.New("handshake error")
 		}
 		c.ackSerial = serial + 1
 	}
 	c.Log("handshake done")
+	return nil
 }

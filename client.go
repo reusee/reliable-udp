@@ -43,7 +43,9 @@ func NewClient(addrStr string) (*Conn, error) {
 	}()
 
 	// handshake
-	conn.handshake()
+	if err := conn.handshake(); err != nil {
+		return nil, err
+	}
 	syncPacket := conn.newPacket([]byte{}, ACK)
 	conn.sendPacket(syncPacket)
 

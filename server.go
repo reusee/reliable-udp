@@ -95,6 +95,10 @@ func (s *Server) newConn(conns map[string]*Conn, remoteAddr *net.UDPAddr, packet
 		delete(conns, remoteAddr.String())
 	})
 	s.newConnsIn <- conn
-	go conn.handshake()
+	go func() {
+		if err := conn.handshake(); err != nil {
+			return
+		}
+	}()
 	s.Log("newConn addr %s serial %d", remoteAddr.String(), serial)
 }

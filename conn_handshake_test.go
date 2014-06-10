@@ -53,3 +53,13 @@ func TestHandshake(t *testing.T) {
 	<-waitClientDone
 	<-waitServerDone
 }
+
+func TestHandshakeTimeout(t *testing.T) {
+	_, err := NewClient("12.34.56.78:9012")
+	if err == nil {
+		t.Fatalf("should fail")
+	}
+	if err.Error() != "handshake timeout" {
+		t.Fatalf("should be handshake timeout error")
+	}
+}
