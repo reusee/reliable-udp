@@ -3,6 +3,7 @@ package udp
 import (
 	"bytes"
 	"encoding/binary"
+	"math/rand"
 	"time"
 
 	"github.com/reusee/closer"
@@ -24,6 +25,7 @@ type Conn struct {
 
 func makeConn() *Conn {
 	conn := &Conn{
+		serial:            uint32(rand.Intn(65536)),
 		Logger:            newLogger(),
 		incomingPacketsIn: make(chan []byte),
 		incomingPackets:   make(chan []byte),
@@ -49,7 +51,7 @@ func (c *Conn) sendPacket(packet Packet) error {
 
 func (c *Conn) readPacket(packetData []byte) (uint32, uint32, byte, uint16, []byte) {
 	serial, ackSerial, flag, windowSize, data := readPacket(packetData)
-	c.Log("readPacket serial %d ackSerial %d flag %x windowSize %d length %d",
+	c.Log("readPacket serial %d ackSerial %d flag %b windowSize %d length %d",
 		serial, ackSerial, flag, windowSize, len(data))
 	return serial, ackSerial, flag, windowSize, data
 }
@@ -65,8 +67,13 @@ func (c *Conn) handshake() {
 		c.Log("handshake timeout")
 		c.Close()
 		return
-	case packetData := <-c.incomingPackets:
-		serial, _, _, _, _ := c.readPacket(packetData)
+	case packetData := <-c.incomingPackets: // get ack
+		serial, _, flags, _, _ := c.readPacket(packetData)
+		if flags&ACK == 0 {
+			c.Log("handshake error")
+			c.Close()
+			return
+		}
 		c.ackSerial = serial + 1
 	}
 	c.Log("handshake done")

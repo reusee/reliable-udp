@@ -73,7 +73,7 @@ func NewServer(addrStr string) (*Server, error) {
 
 func (s *Server) readPacket(packetData []byte) (uint32, uint32, byte, uint16, []byte) {
 	serial, ackSerial, flag, windowSize, data := readPacket(packetData)
-	s.Log("readPacket serial %d ackSerial %d flag %x windowSize %d length %d",
+	s.Log("readPacket serial %d ackSerial %d flag %b windowSize %d length %d",
 		serial, ackSerial, flag, windowSize, len(data))
 	return serial, ackSerial, flag, windowSize, data
 }

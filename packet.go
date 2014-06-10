@@ -29,7 +29,7 @@ func (c *Conn) newPacket(data []byte, flags ...byte) Packet {
 		data:   data,
 	}
 	c.serial++
-	c.Log("newPacket serial %d flag %x length %d", packet.serial, packet.flag, len(packet.data))
+	c.Log("newPacket serial %d flag %b length %d", packet.serial, packet.flag, len(packet.data))
 	return packet
 }
 
