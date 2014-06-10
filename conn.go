@@ -35,6 +35,8 @@ type Conn struct {
 	packetHeap    *Heap
 	ackCheckTimer *Timer
 	ackTimer      *time.Timer
+
+	StatResend int
 }
 
 func makeConn() *Conn {
@@ -149,7 +151,7 @@ func (c *Conn) handlePacket(packetData []byte) {
 	// process ackSerial
 	c.Log("unackPackets Len %d", c.unackPackets.Len())
 	for e := c.unackPackets.Front(); e != nil; e = e.Next() {
-		packet := e.Value.(Packet)
+		packet := e.Value.(*Packet)
 		if packet.serial >= ackSerial {
 			break
 		}
@@ -165,11 +167,13 @@ func (c *Conn) handlePacket(packetData []byte) {
 func (c *Conn) checkAck() {
 	now := c.ackCheckTimer.Now
 	for e := c.unackPackets.Front(); e != nil; e = e.Next() {
-		packet := e.Value.(Packet)
+		packet := e.Value.(*Packet)
 		if now-packet.sentTime < 3 {
-			break
+			continue
 		}
-		c.sendPacket(packet)
+		c.sendPacket(*packet)
+		packet.sentTime = now //TODO test
+		c.StatResend++
 		c.Log("Resend %d", packet.serial)
 	}
 }
@@ -183,7 +187,7 @@ func (c *Conn) Send(data []byte) error {
 	}
 	// push to unackPackets
 	packet.sentTime = c.ackCheckTimer.Now
-	c.unackPackets.PushBack(packet)
+	c.unackPackets.PushBack(&packet)
 	// reset ackTimer
 	c.ackTimer.Reset(ackTimerTimeout)
 	// log

@@ -55,4 +55,6 @@ func TestSend(t *testing.T) {
 	}
 
 	<-done
+
+	p("resend %d\n", client.StatResend)
 }
