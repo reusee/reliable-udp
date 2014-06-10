@@ -13,6 +13,10 @@ import (
 	ic "github.com/reusee/inf-chan"
 )
 
+var (
+	ackTimerTimeout = time.Millisecond * 100
+)
+
 type Conn struct {
 	closer.Closer
 	*Logger
@@ -27,8 +31,10 @@ type Conn struct {
 	recvIn            chan []byte
 	Recv              chan []byte
 
-	unackPackets *list.List
-	packetHeap   *Heap
+	unackPackets  *list.List
+	packetHeap    *Heap
+	ackCheckTimer *Timer
+	ackTimer      *time.Timer
 }
 
 func makeConn() *Conn {
@@ -41,6 +47,8 @@ func makeConn() *Conn {
 		Recv:              make(chan []byte),
 		unackPackets:      list.New(),
 		packetHeap:        new(Heap),
+		ackCheckTimer:     NewTimer(time.Millisecond * 100),
+		ackTimer:          time.NewTimer(ackTimerTimeout),
 	}
 	heap.Init(conn.packetHeap)
 	ic.Link(conn.incomingPacketsIn, conn.incomingPackets)
@@ -49,6 +57,7 @@ func makeConn() *Conn {
 		conn.Logger.Close()
 		close(conn.incomingPacketsIn)
 		close(conn.recvIn)
+		conn.ackCheckTimer.Close()
 	})
 	return conn
 }
@@ -103,11 +112,16 @@ func (c *Conn) start() {
 				return
 			}
 			c.handlePacket(packetData)
+		case <-c.ackCheckTimer.Tick:
+			c.checkAck()
+		case <-c.ackTimer.C:
+			c.sendAck()
 		}
 	}
 }
 
 func (c *Conn) handlePacket(packetData []byte) {
+	// process data
 	serial, ackSerial, flags, windowSize, data := c.readPacket(packetData)
 	if serial == c.ackSerial { // in order
 		if len(data) > 0 {
@@ -134,20 +148,52 @@ func (c *Conn) handlePacket(packetData []byte) {
 	}
 	// process ackSerial
 	c.Log("unackPackets Len %d", c.unackPackets.Len())
-	for e := c.unackPackets.Front(); e != nil && e.Value.(Packet).serial < ackSerial; e = c.unackPackets.Front() {
-		c.Log("Acked %d", e.Value.(Packet).serial)
+	for e := c.unackPackets.Front(); e != nil; e = e.Next() {
+		packet := e.Value.(Packet)
+		if packet.serial >= ackSerial {
+			break
+		}
+		c.Log("Acked %d in %d", packet.serial, c.ackCheckTimer.Now-packet.sentTime)
 		c.unackPackets.Remove(e)
 	}
-	_ = ackSerial
 	//TODO process flags
 	_ = flags
 	//TODO windowSize
 	_ = windowSize
 }
 
+func (c *Conn) checkAck() {
+	now := c.ackCheckTimer.Now
+	for e := c.unackPackets.Front(); e != nil; e = e.Next() {
+		packet := e.Value.(Packet)
+		if now-packet.sentTime < 3 {
+			break
+		}
+		c.sendPacket(packet)
+		c.Log("Resend %d", packet.serial)
+	}
+}
+
 func (c *Conn) Send(data []byte) error {
+	// send
 	packet := c.newPacket(data, ACK)
+	err := c.sendPacket(packet)
+	if err != nil {
+		return err
+	}
+	// push to unackPackets
+	packet.sentTime = c.ackCheckTimer.Now
 	c.unackPackets.PushBack(packet)
+	// reset ackTimer
+	c.ackTimer.Reset(ackTimerTimeout)
+	// log
 	c.Log("Send serial %d", packet.serial)
-	return c.sendPacket(packet)
+	return nil
+}
+
+func (c *Conn) sendAck() {
+	packet := c.newPacket([]byte{}, ACK)
+	c.sendPacket(packet)
+	c.ackTimer.Reset(ackTimerTimeout)
+	c.Log("Send Ack")
 }
