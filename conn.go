@@ -108,7 +108,9 @@ func (c *Conn) start() {
 func (c *Conn) handlePacket(packetData []byte) {
 	serial, ackSerial, flags, windowSize, data := c.readPacket(packetData)
 	if serial == c.ackSerial { // in order
-		c.recvIn <- data
+		if len(data) > 0 {
+			c.recvIn <- data
+		}
 		c.Log("Recv serial %d length %d", serial, len(data))
 		c.ackSerial++
 	} else if serial < c.ackSerial { // duplicated packet
@@ -120,11 +122,14 @@ func (c *Conn) handlePacket(packetData []byte) {
 		})
 		for packet := c.packetHeap.Peek(); packet.serial == c.ackSerial; packet = c.packetHeap.Peek() {
 			heap.Pop(c.packetHeap)
-			c.recvIn <- packet.data
+			if len(packet.data) > 0 {
+				c.recvIn <- packet.data
+			}
 			c.ackSerial++
 		}
 	}
 	//TODO process ackSerial, delete item from unackPackets
+	c.Log("Acked %d", ackSerial)
 	_ = ackSerial
 	//TODO process flags
 	_ = flags
