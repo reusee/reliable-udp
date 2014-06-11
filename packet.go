@@ -17,8 +17,9 @@ type Packet struct {
 	flag   byte
 	data   []byte
 
-	index    int  // for heap
-	sentTime uint // for congestion
+	index         int  // for heap
+	sentTime      uint // for congestion
+	resendTimeout uint // for timer
 }
 
 func (c *Conn) newPacket(data []byte, flags ...byte) Packet {
@@ -27,9 +28,10 @@ func (c *Conn) newPacket(data []byte, flags ...byte) Packet {
 		flag |= f
 	}
 	packet := Packet{
-		serial: c.serial,
-		flag:   flag,
-		data:   data,
+		serial:        c.serial,
+		flag:          flag,
+		data:          data,
+		resendTimeout: 3,
 	}
 	c.serial++
 	c.Log("newPacket serial %d flag %b length %d", packet.serial, packet.flag, len(packet.data))

@@ -166,13 +166,14 @@ func (c *Conn) handlePacket(packetData []byte) {
 
 func (c *Conn) checkAck() {
 	now := c.ackCheckTimer.Now
-	for e := c.unackPackets.Front(); e != nil; e = e.Next() {
+	for e := c.unackPackets.Front(); e != nil; e = e.Next() { //TODO selective check
 		packet := e.Value.(*Packet)
-		if now-packet.sentTime < 3 {
+		if now-packet.sentTime < packet.resendTimeout { // check later
 			continue
 		}
-		c.sendPacket(*packet)
-		packet.sentTime = now //TODO test
+		c.sendPacket(*packet)     // resend
+		packet.sentTime = now     // reset sent time
+		packet.resendTimeout *= 2 // reset check timeout
 		c.StatResend++
 		c.Log("Resend %d", packet.serial)
 	}
