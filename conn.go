@@ -139,13 +139,20 @@ func (c *Conn) handlePacket(packetData []byte) {
 			data:   data,
 		})
 		c.Log("Out of order packet %d heapLen %d", serial, c.packetHeap.Len())
-		for packet := c.packetHeap.Peek(); packet.serial == c.ackSerial; packet = c.packetHeap.Peek() {
-			heap.Pop(c.packetHeap)
-			if len(packet.data) > 0 {
-				c.recvIn <- packet.data
-				c.Log("Provide serial %d length %d", serial, len(data))
+		for c.packetHeap.Len() > 0 {
+			packet := c.packetHeap.Peek()
+			if packet.serial == c.ackSerial {
+				heap.Pop(c.packetHeap)
+				if len(packet.data) > 0 {
+					c.recvIn <- packet.data
+					c.Log("Provide serial %d length %d", serial, len(data))
+				}
+				c.ackSerial++
+			} else if packet.serial < c.ackSerial { // duplicated
+				heap.Pop(c.packetHeap)
+			} else {
+				break
 			}
-			c.ackSerial++
 		}
 	}
 	// process ackSerial
@@ -168,14 +175,14 @@ func (c *Conn) checkAck() {
 	now := c.ackCheckTimer.Now
 	for e := c.unackPackets.Front(); e != nil; e = e.Next() { //TODO selective check
 		packet := e.Value.(*Packet)
-		if now-packet.sentTime < packet.resendTimeout { // check later
-			continue
+		if now > packet.sentTime && now-packet.sentTime > packet.resendTimeout { // check later
+			c.Log("Timeout serial %d now %d sent %d timeout %d", packet.serial, now, packet.sentTime, packet.resendTimeout)
+			c.sendPacket(*packet)     // resend
+			packet.sentTime = now     // reset sent time
+			packet.resendTimeout *= 2 // reset check timeout
+			c.StatResend++
+			c.Log("Resend %d at %d nextCheck %d", packet.serial, now, packet.resendTimeout)
 		}
-		c.sendPacket(*packet)     // resend
-		packet.sentTime = now     // reset sent time
-		packet.resendTimeout *= 2 // reset check timeout
-		c.StatResend++
-		c.Log("Resend %d", packet.serial)
 	}
 }
 

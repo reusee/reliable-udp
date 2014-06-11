@@ -31,7 +31,7 @@ func (c *Conn) newPacket(data []byte, flags ...byte) Packet {
 		serial:        c.serial,
 		flag:          flag,
 		data:          data,
-		resendTimeout: 3,
+		resendTimeout: 3, //TODO set it dynamically
 	}
 	c.serial++
 	c.Log("newPacket serial %d flag %b length %d", packet.serial, packet.flag, len(packet.data))
